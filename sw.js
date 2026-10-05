@@ -1,4 +1,4 @@
-const CACHE_NAME = "sajil-alrawi-v2";
+const CACHE_NAME = "sajil-alrawi-v3";
 const APP_FILES = [
   "./",
   "index.html",

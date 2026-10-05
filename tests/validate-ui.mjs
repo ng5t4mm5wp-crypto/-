@@ -31,7 +31,11 @@ assert.match(html, /<html lang="ar" dir="rtl">/);
 assert.match(html, /data-listen/);
 assert.match(html, /data-timer-input/);
 assert.doesNotMatch(html, /data-mode=/);
+assert.match(app, /recognition\.continuous = true/);
+assert.match(app, /scheduleRecognitionRestart/);
+assert.match(app, /silenceTimer/);
 
 console.log(`✓ ${new Set(dataSelectors).size} عنصر واجهة مرتبط بالشيفرة`);
 console.log("✓ ملفات العمل دون اتصال موجودة");
 console.log("✓ الواجهة عربية، صوتية، ومن دون أنماط اللعب القديمة");
+console.log("✓ الاستماع المستمر وإعادة التشغيل التلقائي مفعّلان");
