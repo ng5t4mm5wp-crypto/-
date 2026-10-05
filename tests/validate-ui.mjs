@@ -20,7 +20,6 @@ for (const attribute of new Set(dataSelectors)) {
 }
 
 for (const required of ["app.js", "game-core.js", "styles.css", "data/verses.json"]) {
-  assert.ok(worker.includes(`"${required}"`), `${required} غير موجود في ذاكرة العمل دون اتصال`);
   await access(resolve(root, required));
 }
 
@@ -33,9 +32,12 @@ assert.match(html, /data-timer-input/);
 assert.doesNotMatch(html, /data-mode=/);
 assert.match(app, /recognition\.continuous = true/);
 assert.match(app, /scheduleRecognitionRestart/);
-assert.match(app, /silenceTimer/);
+assert.match(app, /navigator\.mediaDevices\?\.getUserMedia/);
+assert.doesNotMatch(app, /silenceTimer/);
+assert.match(app, /serviceWorker\.getRegistrations/);
+assert.match(worker, /registration\.unregister/);
 
 console.log(`✓ ${new Set(dataSelectors).size} عنصر واجهة مرتبط بالشيفرة`);
-console.log("✓ ملفات العمل دون اتصال موجودة");
+console.log("✓ ملفات اللعبة المطلوبة موجودة والتخزين القديم معطّل");
 console.log("✓ الواجهة عربية، صوتية، ومن دون أنماط اللعب القديمة");
-console.log("✓ الاستماع المستمر وإعادة التشغيل التلقائي مفعّلان");
+console.log("✓ فتح الميكروفون وإغلاقه يدويان مع إعادة تشغيل التعرف تلقائيًا");

@@ -3,7 +3,7 @@ import {
   chooseOpeningVerse,
   findBestMatch,
   lastArabicLetter
-} from "./game-core.js";
+} from "./game-core.js?v=5";
 
 const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -75,8 +75,9 @@ const state = {
   alternativeTranscripts: [],
   interimTranscript: "",
   recognitionRestartTimer: null,
-  silenceTimer: null,
   recognition: null,
+  microphoneStream: null,
+  openingMicrophone: false,
   usedIds: new Set(),
   narrator: null,
   requiredLetter: "",
@@ -221,7 +222,7 @@ function setListening(active) {
   state.listening = active;
   elements.transcriptBox.classList.toggle("is-listening", active);
   elements.listen.classList.toggle("is-listening", active);
-  elements.listenLabel.textContent = active ? "اكتفِ وتحقّق" : "ابدأ الاستماع";
+  elements.listenLabel.textContent = active ? "أغلق واعتمد البيت" : "افتح الميكروفون";
   elements.turnPrompt.textContent = active ? "الراوي يسمعك الآن…" : "أنشد بيتك بصوت واضح";
 }
 
@@ -230,10 +231,12 @@ function clearRecognitionTimers() {
     window.clearTimeout(state.recognitionRestartTimer);
     state.recognitionRestartTimer = null;
   }
-  if (state.silenceTimer) {
-    window.clearTimeout(state.silenceTimer);
-    state.silenceTimer = null;
-  }
+}
+
+function closeMicrophoneStream() {
+  if (!state.microphoneStream) return;
+  state.microphoneStream.getTracks().forEach(track => track.stop());
+  state.microphoneStream = null;
 }
 
 function resetRecognitionText() {
@@ -249,6 +252,7 @@ function recognitionCandidates() {
 
 function submitRecognitionText() {
   const transcripts = recognitionCandidates();
+  closeMicrophoneStream();
   resetRecognitionText();
   state.submitOnRecognitionEnd = false;
   if (transcripts.length) {
@@ -304,6 +308,7 @@ function finishListeningAndSubmit() {
 function stopRecognition(ignoreEnd = false) {
   if (!state.recognition) return;
   clearRecognitionTimers();
+  closeMicrophoneStream();
   const wasActive = state.recognitionActive;
   setListening(false);
   state.submitOnRecognitionEnd = false;
@@ -541,7 +546,7 @@ function initializeRecognition() {
       return;
     }
     setListening(true);
-    elements.voiceHelp.textContent = "أنشد البيت كاملًا؛ سأبقى منصتًا حتى تسكت أو تضغط «اكتفِ وتحقّق».";
+    elements.voiceHelp.textContent = "الميكروفون مفتوح. أنشد على مهل، ثم اضغط «أغلق واعتمد البيت».";
   };
 
   state.recognition.onresult = event => {
@@ -563,11 +568,6 @@ function initializeRecognition() {
     state.interimTranscript = interim.trim();
     const visible = `${state.finalSegments.join(" ")} ${state.interimTranscript}`.trim();
     if (visible) elements.transcript.textContent = visible;
-
-    if (state.finalSegments.length) {
-      if (state.silenceTimer) window.clearTimeout(state.silenceTimer);
-      state.silenceTimer = window.setTimeout(finishListeningAndSubmit, 2200);
-    }
   };
 
   state.recognition.onerror = event => {
@@ -582,6 +582,7 @@ function initializeRecognition() {
     if (["not-allowed", "audio-capture", "network", "language-not-supported"].includes(event.error)) {
       clearRecognitionTimers();
       setListening(false);
+      closeMicrophoneStream();
     }
   };
 
@@ -596,18 +597,62 @@ function initializeRecognition() {
       return;
     }
     if (state.listening) {
-      if (state.finalSegments.length) {
-        setListening(false);
-        submitRecognitionText();
-      } else if (state.interimTranscript.trim().length >= 8) {
-        state.finalSegments.push(state.interimTranscript.trim());
-        setListening(false);
-        submitRecognitionText();
-      } else {
-        scheduleRecognitionRestart();
+      const interim = state.interimTranscript.trim();
+      if (interim.length >= 2 && state.finalSegments.at(-1) !== interim) {
+        state.finalSegments.push(interim);
       }
+      state.interimTranscript = "";
+      scheduleRecognitionRestart();
     }
   };
+}
+
+async function openListeningSession() {
+  if (state.openingMicrophone) return;
+  state.openingMicrophone = true;
+  elements.listen.disabled = true;
+  hideFeedback();
+  clearRecognitionTimers();
+  resetRecognitionText();
+
+  try {
+    if (navigator.mediaDevices?.getUserMedia) {
+      state.microphoneStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
+        video: false
+      });
+    }
+  } catch (error) {
+    console.error(error);
+    showFeedback(
+      "error",
+      "تعذّر فتح الميكروفون",
+      "تحقق من إذن الميكروفون في المتصفح وإعدادات النظام، ثم حاول مجددًا."
+    );
+    elements.voiceHelp.textContent = "لم يحصل الموقع على صوت من الميكروفون.";
+    state.openingMicrophone = false;
+    elements.listen.disabled = false;
+    return;
+  }
+
+  if (!state.duelActive || state.paused || state.inTransition) {
+    closeMicrophoneStream();
+    state.openingMicrophone = false;
+    elements.listen.disabled = false;
+    return;
+  }
+
+  state.submitOnRecognitionEnd = false;
+  elements.transcript.textContent = "الميكروفون مفتوح… ابدأ الإنشاد";
+  elements.voiceHelp.textContent = "ستبقى الكلمات أمامك، ولن يعتمد البيت حتى تغلق الميكروفون بنفسك.";
+  setListening(true);
+  elements.listen.disabled = false;
+  state.openingMicrophone = false;
+  startRecognitionEngine();
 }
 
 function toggleListening() {
@@ -616,21 +661,13 @@ function toggleListening() {
     finishListeningAndSubmit();
     return;
   }
-
-  clearRecognitionTimers();
-  resetRecognitionText();
-  state.submitOnRecognitionEnd = false;
-  hideFeedback();
-  elements.transcript.textContent = "أُنصت…";
-  elements.voiceHelp.textContent = "ابدأ الإنشاد؛ لن أغلق الميكروفون عند سكتة قصيرة.";
-  setListening(true);
-  startRecognitionEngine();
+  openListeningSession();
 }
 
 async function loadVerses() {
   const readinessText = elements.voiceReadiness.querySelector("span:last-child");
   try {
-    const response = await fetch("data/verses.json");
+    const response = await fetch("data/verses.json?v=5");
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (!Array.isArray(data.verses) || data.verses.length !== 1000) {
@@ -688,6 +725,15 @@ initializeRecognition();
 showScreen("start");
 loadVerses();
 
-if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", async () => {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(registration => registration.unregister()));
+      const keys = await caches.keys();
+      await Promise.all(keys.filter(key => key.startsWith("sajil-alrawi-")).map(key => caches.delete(key)));
+    } catch {
+      // Cache cleanup is best-effort and does not affect the duel.
+    }
+  });
 }
