@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/validate-data.mjs && node --check app.js && node --check sw.js",
+    "test": "node tests/validate-data.mjs && node tests/validate-game-logic.mjs && node tests/validate-ui.mjs && node --check app.js && node --check game-core.js && node --check sw.js",
     "serve": "python3 -m http.server 4173"
   }
 }

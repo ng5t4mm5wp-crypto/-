@@ -1,9 +1,10 @@
-const CACHE_NAME = "sajil-alrawi-v1";
+const CACHE_NAME = "sajil-alrawi-v2";
 const APP_FILES = [
   "./",
   "index.html",
   "styles.css",
   "app.js",
+  "game-core.js",
   "manifest.webmanifest",
   "assets/icon.svg",
   "data/verses.json"

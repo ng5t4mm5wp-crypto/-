@@ -1,41 +1,58 @@
-const ROUND_COUNT = 10;
-const QUESTION_SECONDS = 20;
+import {
+  chooseComputerVerse,
+  chooseOpeningVerse,
+  findBestMatch,
+  lastArabicLetter
+} from "./game-core.js";
+
 const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
-const MODE_LABELS = {
-  complete: "أكمل البيت",
-  meter: "اعرف البحر",
-  mixed: "مجلس الراوي"
-};
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 const elements = {
   screens: [...document.querySelectorAll("[data-screen]")],
-  modeButtons: [...document.querySelectorAll("[data-mode]")],
   homeButtons: [...document.querySelectorAll("[data-go-home]")],
   aboutButtons: [...document.querySelectorAll("[data-open-about]")],
   aboutDialog: document.querySelector("[data-about-dialog]"),
   closeAbout: document.querySelector("[data-close-about]"),
-  loadStatus: document.querySelector("[data-load-status]"),
-  bestScores: [...document.querySelectorAll("[data-best-score]")],
-  roundCurrent: document.querySelector("[data-round-current]"),
-  progressBar: document.querySelector("[data-progress-bar]"),
+  start: document.querySelector("[data-start]"),
+  replay: document.querySelector("[data-replay]"),
+  quit: document.querySelector("[data-quit]"),
+  endDuel: document.querySelector("[data-end-duel]"),
+  timerInput: document.querySelector("[data-timer-input]"),
+  timerOutput: document.querySelector("[data-timer-output]"),
+  durationButtons: [...document.querySelectorAll("[data-duration]")],
+  voiceReadiness: document.querySelector("[data-voice-readiness]"),
+  bestChains: [...document.querySelectorAll("[data-best-chain]")],
+  chain: document.querySelector("[data-chain]"),
   score: document.querySelector("[data-score]"),
-  questionKind: document.querySelector("[data-question-kind]"),
-  promptLabel: document.querySelector("[data-prompt-label]"),
-  questionText: document.querySelector("[data-question-text]"),
-  questionMark: document.querySelector("[data-question-mark]"),
-  answers: document.querySelector("[data-answers]"),
-  time: document.querySelector("[data-time]"),
+  timerControl: document.querySelector("[data-timer-control]"),
+  timerTrack: document.querySelector("[data-timer-track]"),
   timerBar: document.querySelector("[data-timer-bar]"),
+  time: document.querySelector("[data-time]"),
+  timeMinus: document.querySelector("[data-time-minus]"),
+  timePlus: document.querySelector("[data-time-plus]"),
+  pause: document.querySelector("[data-pause]"),
+  roundLabel: document.querySelector("[data-round-label]"),
+  narratorFirst: document.querySelector("[data-narrator-first]"),
+  narratorSecond: document.querySelector("[data-narrator-second]"),
+  requiredLetter: document.querySelector("[data-required-letter]"),
+  turnPrompt: document.querySelector("[data-turn-prompt]"),
+  transcriptBox: document.querySelector("[data-transcript-box]"),
+  transcript: document.querySelector("[data-transcript]"),
+  listen: document.querySelector("[data-listen]"),
+  listenLabel: document.querySelector("[data-listen-label]"),
+  voiceHelp: document.querySelector("[data-voice-help]"),
+  manualEntry: document.querySelector(".manual-entry"),
+  manualInput: document.querySelector("[data-manual-input]"),
+  checkText: document.querySelector("[data-check-text]"),
   feedback: document.querySelector("[data-feedback]"),
+  feedbackIcon: document.querySelector("[data-feedback-icon]"),
   feedbackTitle: document.querySelector("[data-feedback-title]"),
   feedbackText: document.querySelector("[data-feedback-text]"),
-  next: document.querySelector("[data-next]"),
-  quit: document.querySelector("[data-quit]"),
-  replay: document.querySelector("[data-replay]"),
   finalScore: document.querySelector("[data-final-score]"),
-  correctCount: document.querySelector("[data-correct-count]"),
-  bestStreak: document.querySelector("[data-best-streak]"),
-  resultBest: document.querySelector("[data-result-best]"),
+  finalChain: document.querySelector("[data-final-chain]"),
+  finalRounds: document.querySelector("[data-final-rounds]"),
+  finalBest: document.querySelector("[data-final-best]"),
   resultGrade: document.querySelector("[data-result-grade]"),
   resultTitle: document.querySelector("[data-result-title]"),
   resultMessage: document.querySelector("[data-result-message]"),
@@ -44,67 +61,56 @@ const elements = {
 
 const state = {
   verses: [],
-  meters: [],
-  mode: "complete",
-  round: 0,
-  questions: [],
-  score: 0,
-  correct: 0,
-  streak: 0,
-  bestStreak: 0,
-  answered: false,
+  selectedDuration: 30,
+  turnTotalMs: 30000,
+  remainingMs: 30000,
+  deadline: 0,
   timerId: null,
-  deadline: 0
+  paused: false,
+  listening: false,
+  ignoreRecognitionEnd: false,
+  finalTranscripts: [],
+  recognition: null,
+  usedIds: new Set(),
+  narrator: null,
+  requiredLetter: "",
+  chain: 0,
+  score: 0,
+  rounds: 0,
+  inTransition: false,
+  duelActive: false
 };
 
 function toArabicNumber(value) {
   return String(Math.max(0, Math.round(value))).replace(/\d/g, digit => ARABIC_DIGITS[digit]);
 }
 
-function shuffle(items) {
-  const copy = [...items];
-  for (let index = copy.length - 1; index > 0; index -= 1) {
-    const random = crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
-    const swapWith = Math.floor(random * (index + 1));
-    [copy[index], copy[swapWith]] = [copy[swapWith], copy[index]];
-  }
-  return copy;
-}
-
-function sample(items, amount) {
-  return shuffle(items).slice(0, amount);
-}
-
-function getBestScore() {
+function getBestChain() {
   try {
-    return Number(localStorage.getItem("sajil-best-score")) || 0;
+    return Number(localStorage.getItem("sajil-best-chain")) || 0;
   } catch {
     return 0;
   }
 }
 
-function saveBestScore(score) {
-  const best = Math.max(score, getBestScore());
+function saveBestChain(value) {
+  const best = Math.max(value, getBestChain());
   try {
-    localStorage.setItem("sajil-best-score", String(best));
+    localStorage.setItem("sajil-best-chain", String(best));
   } catch {
-    // The game still works when storage is disabled.
+    // The duel works without persistent storage.
   }
-  updateBestScore(best);
-  return best;
-}
-
-function updateBestScore(score = getBestScore()) {
-  elements.bestScores.forEach(element => {
-    element.textContent = toArabicNumber(score);
+  elements.bestChains.forEach(element => {
+    element.textContent = toArabicNumber(best);
   });
+  return best;
 }
 
 function showScreen(name) {
   elements.screens.forEach(screen => {
-    const isTarget = screen.dataset.screen === name;
-    screen.classList.toggle("is-active", isTarget);
-    screen.setAttribute("aria-hidden", String(!isTarget));
+    const active = screen.dataset.screen === name;
+    screen.classList.toggle("is-active", active);
+    screen.setAttribute("aria-hidden", String(!active));
   });
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -112,7 +118,18 @@ function showScreen(name) {
 function showToast(message) {
   elements.toast.textContent = message;
   elements.toast.classList.add("is-visible");
-  window.setTimeout(() => elements.toast.classList.remove("is-visible"), 2200);
+  window.setTimeout(() => elements.toast.classList.remove("is-visible"), 2300);
+}
+
+function setDuration(seconds) {
+  state.selectedDuration = seconds;
+  const unlimited = seconds === 0;
+  elements.timerInput.disabled = unlimited;
+  if (!unlimited) elements.timerInput.value = String(seconds);
+  elements.timerOutput.textContent = unlimited ? "بلا مؤقّت" : `${toArabicNumber(seconds)} ثانية`;
+  elements.durationButtons.forEach(button => {
+    button.classList.toggle("is-selected", Number(button.dataset.duration) === seconds);
+  });
 }
 
 function stopTimer() {
@@ -120,213 +137,381 @@ function stopTimer() {
     window.clearInterval(state.timerId);
     state.timerId = null;
   }
-}
-
-function goHome() {
-  stopTimer();
-  state.answered = true;
-  showScreen("start");
-}
-
-function buildQuestion(verse, index) {
-  const type = state.mode === "mixed"
-    ? (index % 2 === 0 ? "complete" : "meter")
-    : state.mode;
-
-  if (type === "meter") {
-    const alternatives = sample(state.meters.filter(meter => meter !== verse.meter), 3);
-    return {
-      type,
-      verse,
-      correct: verse.meter,
-      answers: shuffle([verse.meter, ...alternatives])
-    };
+  if (state.deadline) {
+    state.remainingMs = Math.max(0, state.deadline - performance.now());
+    state.deadline = 0;
   }
-
-  const sameMeter = state.verses.filter(
-    item => item.meter === verse.meter && item.id !== verse.id && item.second !== verse.second
-  );
-  const otherVerses = state.verses.filter(
-    item => item.id !== verse.id && item.second !== verse.second
-  );
-  const distractorPool = sameMeter.length >= 3 ? sameMeter : otherVerses;
-  const alternatives = sample(distractorPool, 3).map(item => item.second);
-
-  return {
-    type,
-    verse,
-    correct: verse.second,
-    answers: shuffle([verse.second, ...alternatives])
-  };
 }
 
-function startGame(mode) {
-  if (state.verses.length < ROUND_COUNT) {
-    showToast("لم يكتمل فتح الديوان بعد");
+function updateTimerDisplay() {
+  if (state.selectedDuration === 0) {
+    elements.time.textContent = "∞";
+    elements.timerBar.style.width = "100%";
+    elements.timerBar.classList.remove("is-urgent");
     return;
   }
-
-  state.mode = mode;
-  state.round = 0;
-  state.score = 0;
-  state.correct = 0;
-  state.streak = 0;
-  state.bestStreak = 0;
-  state.questions = sample(state.verses, ROUND_COUNT).map(buildQuestion);
-  elements.score.textContent = toArabicNumber(0);
-  showScreen("game");
-  renderQuestion();
-}
-
-function renderQuestion() {
-  stopTimer();
-  state.answered = false;
-  const question = state.questions[state.round];
-  const isComplete = question.type === "complete";
-
-  elements.roundCurrent.textContent = toArabicNumber(state.round + 1);
-  elements.progressBar.style.width = `${((state.round + 1) / ROUND_COUNT) * 100}%`;
-  elements.questionKind.textContent = MODE_LABELS[question.type];
-  elements.promptLabel.textContent = isComplete ? "اختر عجز البيت الصحيح" : "حدّد البحر الشعري";
-  elements.questionText.textContent = isComplete
-    ? question.verse.first
-    : `${question.verse.first} ۞ ${question.verse.second}`;
-  elements.questionMark.hidden = !isComplete;
-  elements.feedback.hidden = true;
-  elements.answers.replaceChildren();
-
-  question.answers.forEach((answer, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "answer-button";
-    button.dataset.answer = answer;
-    button.innerHTML = `<span class="answer-index">${toArabicNumber(index + 1)}</span><span class="answer-text"></span>`;
-    button.querySelector(".answer-text").textContent = answer;
-    button.addEventListener("click", () => answerQuestion(answer));
-    elements.answers.append(button);
-  });
-
-  elements.next.textContent = state.round === ROUND_COUNT - 1 ? "عرض النتيجة" : "التالي";
-  startTimer();
-  elements.answers.querySelector("button")?.focus({ preventScroll: true });
-}
-
-function startTimer() {
-  state.deadline = performance.now() + QUESTION_SECONDS * 1000;
-  updateTimer(QUESTION_SECONDS * 1000);
-  state.timerId = window.setInterval(() => {
-    const remaining = Math.max(0, state.deadline - performance.now());
-    updateTimer(remaining);
-    if (remaining <= 0) {
-      stopTimer();
-      answerQuestion(null);
-    }
-  }, 100);
-}
-
-function updateTimer(milliseconds) {
-  const seconds = Math.ceil(milliseconds / 1000);
-  const percentage = (milliseconds / (QUESTION_SECONDS * 1000)) * 100;
+  const seconds = Math.ceil(state.remainingMs / 1000);
+  const percentage = Math.max(0, Math.min(100, state.remainingMs / state.turnTotalMs * 100));
   elements.time.textContent = toArabicNumber(seconds);
   elements.timerBar.style.width = `${percentage}%`;
   elements.timerBar.classList.toggle("is-urgent", seconds <= 5);
 }
 
-function answerQuestion(answer) {
-  if (state.answered) return;
-  state.answered = true;
+function resumeTimer() {
+  if (state.selectedDuration === 0 || state.paused || !state.duelActive || state.inTransition) return;
   stopTimer();
-
-  const question = state.questions[state.round];
-  const isCorrect = answer === question.correct;
-  const secondsLeft = Math.max(0, Math.ceil((state.deadline - performance.now()) / 1000));
-
-  if (isCorrect) {
-    state.streak += 1;
-    state.correct += 1;
-    state.bestStreak = Math.max(state.bestStreak, state.streak);
-    state.score += 100 + (secondsLeft * 3) + Math.min(state.streak - 1, 5) * 20;
-    elements.feedbackTitle.textContent = state.streak >= 3
-      ? `أحسنت! سلسلة من ${toArabicNumber(state.streak)}`
-      : "أصبت يا راوي";
-  } else {
-    state.streak = 0;
-    elements.feedbackTitle.textContent = answer === null ? "انقضى الوقت" : "فاتك هذا البيت";
-  }
-
-  elements.score.textContent = toArabicNumber(state.score);
-  elements.answers.querySelectorAll(".answer-button").forEach(button => {
-    button.disabled = true;
-    if (button.dataset.answer === question.correct) button.classList.add("is-correct");
-    if (button.dataset.answer === answer && !isCorrect) button.classList.add("is-wrong");
-  });
-
-  elements.feedbackText.textContent = question.type === "complete"
-    ? `${question.verse.first} ۞ ${question.verse.second} — ${question.verse.meter}`
-    : `البحر الصحيح: ${question.verse.meter}`;
-  elements.feedback.hidden = false;
-  elements.next.focus({ preventScroll: true });
+  state.deadline = performance.now() + state.remainingMs;
+  state.timerId = window.setInterval(() => {
+    state.remainingMs = Math.max(0, state.deadline - performance.now());
+    updateTimerDisplay();
+    if (state.remainingMs <= 0) {
+      stopTimer();
+      finishDuel("timeout");
+    }
+  }, 100);
 }
 
-function nextQuestion() {
-  if (!state.answered) return;
-  if (state.round >= ROUND_COUNT - 1) {
-    finishGame();
+function resetTurnTimer() {
+  stopTimer();
+  state.paused = false;
+  state.turnTotalMs = state.selectedDuration * 1000;
+  state.remainingMs = state.turnTotalMs;
+  elements.timerControl.classList.toggle("is-unlimited", state.selectedDuration === 0);
+  elements.timerTrack.classList.toggle("is-hidden", state.selectedDuration === 0);
+  elements.pause.disabled = state.selectedDuration === 0;
+  elements.pause.textContent = "إيقاف";
+  updateTimerDisplay();
+  resumeTimer();
+}
+
+function adjustTurnTime(seconds) {
+  if (state.selectedDuration === 0 || state.inTransition) return;
+  stopTimer();
+  state.remainingMs = Math.max(5000, Math.min(120000, state.remainingMs + seconds * 1000));
+  state.turnTotalMs = Math.max(state.remainingMs, Math.min(120000, state.turnTotalMs + seconds * 1000));
+  updateTimerDisplay();
+  resumeTimer();
+}
+
+function togglePause() {
+  if (state.selectedDuration === 0 || state.inTransition) return;
+  if (!state.paused) {
+    stopTimer();
+    stopRecognition(true);
+    state.paused = true;
+    elements.pause.textContent = "استئناف";
+    elements.turnPrompt.textContent = "المجلس متوقّف مؤقتًا";
+    elements.listen.disabled = true;
+  } else {
+    state.paused = false;
+    elements.pause.textContent = "إيقاف";
+    elements.turnPrompt.textContent = "أنشد بيتك بصوت واضح";
+    elements.listen.disabled = !Recognition;
+    resumeTimer();
+  }
+}
+
+function setListening(active) {
+  state.listening = active;
+  elements.transcriptBox.classList.toggle("is-listening", active);
+  elements.listen.classList.toggle("is-listening", active);
+  elements.listenLabel.textContent = active ? "أوقف وأرسل" : "ابدأ الاستماع";
+  elements.turnPrompt.textContent = active ? "الراوي يسمعك الآن…" : "أنشد بيتك بصوت واضح";
+}
+
+function stopRecognition(ignoreEnd = false) {
+  if (!state.recognition || !state.listening) return;
+  state.ignoreRecognitionEnd = ignoreEnd;
+  try {
+    state.recognition.abort();
+  } catch {
+    // The browser may already have ended the session.
+  }
+  setListening(false);
+}
+
+function showFeedback(type, title, message) {
+  const isError = type === "error";
+  elements.feedback.hidden = false;
+  elements.feedback.classList.toggle("is-error", isError);
+  elements.feedbackIcon.textContent = isError ? "!" : "✓";
+  elements.feedbackTitle.textContent = title;
+  elements.feedbackText.textContent = message;
+}
+
+function hideFeedback() {
+  elements.feedback.hidden = true;
+  elements.feedback.classList.remove("is-error");
+}
+
+function renderNarratorTurn() {
+  elements.narratorFirst.textContent = state.narrator.first;
+  elements.narratorSecond.textContent = state.narrator.second;
+  elements.requiredLetter.textContent = state.requiredLetter;
+  elements.roundLabel.textContent = state.rounds === 1
+    ? "فاتحة المجلس"
+    : `الردّ ${toArabicNumber(state.rounds)}`;
+  elements.chain.textContent = toArabicNumber(state.chain);
+  elements.score.textContent = toArabicNumber(state.score);
+}
+
+function preparePlayerTurn() {
+  state.inTransition = false;
+  elements.transcript.textContent = "سيظهر هنا ما يسمعه الراوي…";
+  elements.manualInput.value = "";
+  elements.listen.disabled = !Recognition;
+  elements.checkText.disabled = false;
+  hideFeedback();
+  resetTurnTimer();
+}
+
+function startDuel() {
+  if (!state.verses.length) {
+    showToast("لم يكتمل فتح الديوان بعد");
     return;
   }
-  state.round += 1;
-  renderQuestion();
+
+  stopRecognition(true);
+  stopTimer();
+  state.usedIds = new Set();
+  state.chain = 0;
+  state.score = 0;
+  state.rounds = 1;
+  state.inTransition = false;
+  state.duelActive = true;
+  state.narrator = chooseOpeningVerse(state.verses, state.usedIds);
+  if (!state.narrator) {
+    state.duelActive = false;
+    showToast("تعذّر اختيار فاتحة للمساجلة");
+    return;
+  }
+  state.usedIds.add(state.narrator.id);
+  state.requiredLetter = lastArabicLetter(state.narrator.second);
+  renderNarratorTurn();
+  showScreen("duel");
+  preparePlayerTurn();
 }
 
-function finishGame() {
-  stopTimer();
-  const best = saveBestScore(state.score);
-  const ratio = state.correct / ROUND_COUNT;
-  let grade = "ج";
-  let title = "بداية طيبة";
-  let message = "كل مجلس يزيد الراوي حفظًا وفطنة.";
+function pickBestRecognition(transcripts) {
+  const evaluated = transcripts.map(transcript => ({
+    transcript,
+    result: findBestMatch(
+      transcript,
+      state.verses,
+      state.requiredLetter,
+      state.usedIds
+    )
+  }));
+  return evaluated.sort((a, b) => b.result.score - a.result.score)[0];
+}
 
-  if (ratio === 1) {
-    grade = "خ";
-    title = "ختمت المجلس بلا خطأ";
-    message = "روايتك راسخة وميزانك حاضر.";
-  } else if (ratio >= 0.8) {
-    grade = "أ";
-    title = "أحسنت يا راوي";
-    message = "كنت قريبًا من مجلس الخواص.";
-  } else if (ratio >= 0.5) {
-    grade = "ب";
-    title = "لك أذنٌ للشعر";
-    message = "جولة أخرى، ويصفو لك الوزن والرواية.";
+function submitPlayerText(transcripts) {
+  if (!state.duelActive || state.inTransition || state.paused) return;
+  const values = (Array.isArray(transcripts) ? transcripts : [transcripts])
+    .map(value => value.trim())
+    .filter(Boolean);
+
+  if (!values.length) {
+    showFeedback("error", "لم أسمع بيتًا", "حاول مرة أخرى واقترب قليلًا من الميكروفون.");
+    return;
+  }
+
+  stopTimer();
+  stopRecognition(true);
+  const best = pickBestRecognition(values);
+  elements.transcript.textContent = best.transcript;
+  const { result } = best;
+
+  if (result.match) {
+    acceptVerse(result.match);
+    return;
+  }
+
+  if (state.selectedDuration !== 0) {
+    state.remainingMs = Math.max(1000, state.remainingMs - 2000);
+    updateTimerDisplay();
+  }
+
+  if (result.reason === "wrong-letter") {
+    showFeedback(
+      "error",
+      `هذا البيت يبدأ بحرف «${result.heardLetter}»`,
+      `المطلوب بيت يبدأ بحرف «${state.requiredLetter}». حاول ببيت آخر.`
+    );
+  } else if (result.reason === "short") {
+    showFeedback("error", "البيت غير مكتمل", "أنشد صدر البيت وعجزه، أو اكتب النص كاملًا.");
+  } else {
+    showFeedback(
+      "error",
+      "لم أجد البيت في الديوان",
+      "أعد الإنشاد بوضوح أو استخدم الكتابة للتأكد من النص."
+    );
+  }
+  elements.listen.disabled = !Recognition;
+  resumeTimer();
+}
+
+function acceptVerse(verse) {
+  state.inTransition = true;
+  state.usedIds.add(verse.id);
+  state.chain += 1;
+  const timeBonus = state.selectedDuration === 0 ? 0 : Math.ceil(state.remainingMs / 1000) * 2;
+  state.score += 100 + timeBonus;
+  elements.chain.textContent = toArabicNumber(state.chain);
+  elements.score.textContent = toArabicNumber(state.score);
+  elements.listen.disabled = true;
+  elements.checkText.disabled = true;
+  showFeedback(
+    "success",
+    "صحّ البيت وقُبل",
+    `${verse.first} ۞ ${verse.second} — ${verse.meter}`
+  );
+
+  window.setTimeout(() => narratorReply(verse), 1450);
+}
+
+function narratorReply(playerVerse) {
+  if (!state.duelActive) return;
+  const needed = lastArabicLetter(playerVerse.second);
+  const reply = chooseComputerVerse(state.verses, needed, state.usedIds);
+
+  if (!reply) {
+    finishDuel("victory");
+    return;
+  }
+
+  state.narrator = reply;
+  state.usedIds.add(reply.id);
+  state.rounds += 1;
+  state.requiredLetter = lastArabicLetter(reply.second);
+  renderNarratorTurn();
+  preparePlayerTurn();
+}
+
+function finishDuel(reason = "ended") {
+  if (!state.duelActive) return;
+  state.duelActive = false;
+  state.inTransition = true;
+  stopTimer();
+  stopRecognition(true);
+  const best = saveBestChain(state.chain);
+
+  let grade = state.chain >= 10 ? "خ" : state.chain >= 5 ? "م" : "ب";
+  let title = state.chain >= 10 ? "من أهل المساجلة" : state.chain >= 5 ? "مساجلة موفّقة" : "بداية طيبة";
+  let message = "كل مجلس يفتح في الذاكرة بابًا جديدًا.";
+
+  if (reason === "timeout") {
+    title = "سبقك المؤقّت";
+    message = "غيّر مدة الدور وابدأ سلسلة أطول.";
+  } else if (reason === "victory") {
+    grade = "ظ";
+    title = "أعجزتَ الراوي";
+    message = "لم يجد الراوي في الديوان ردًا على حرفك الأخير.";
   }
 
   elements.resultGrade.textContent = grade;
   elements.resultTitle.textContent = title;
   elements.resultMessage.textContent = message;
   elements.finalScore.textContent = toArabicNumber(state.score);
-  elements.correctCount.textContent = `${toArabicNumber(state.correct)} / ${toArabicNumber(ROUND_COUNT)}`;
-  elements.bestStreak.textContent = toArabicNumber(state.bestStreak);
-  elements.resultBest.textContent = toArabicNumber(best);
+  elements.finalChain.textContent = toArabicNumber(state.chain);
+  elements.finalRounds.textContent = toArabicNumber(state.rounds);
+  elements.finalBest.textContent = toArabicNumber(best);
   showScreen("result");
 }
 
-function replay() {
-  startGame(state.mode);
+function goHome() {
+  state.duelActive = false;
+  stopTimer();
+  stopRecognition(true);
+  showScreen("start");
 }
 
-function handleKeyboard(event) {
-  if (!document.querySelector('[data-screen="game"]').classList.contains("is-active")) return;
-  if (!state.answered && ["1", "2", "3", "4", "١", "٢", "٣", "٤"].includes(event.key)) {
-    const arabicIndex = ["١", "٢", "٣", "٤"].indexOf(event.key);
-    const index = arabicIndex >= 0 ? arabicIndex : Number(event.key) - 1;
-    elements.answers.querySelectorAll(".answer-button")[index]?.click();
-  } else if (state.answered && (event.key === "Enter" || event.key === " ")) {
-    event.preventDefault();
-    nextQuestion();
+function initializeRecognition() {
+  const readinessText = elements.voiceReadiness.querySelector("span:last-child");
+  if (!Recognition) {
+    elements.voiceReadiness.classList.add("is-limited");
+    readinessText.textContent = "الصوت غير مدعوم هنا؛ استخدم الكتابة أو Chrome.";
+    elements.manualEntry.open = true;
+    elements.listen.disabled = true;
+    return;
+  }
+
+  state.recognition = new Recognition();
+  state.recognition.lang = "ar-SA";
+  state.recognition.continuous = false;
+  state.recognition.interimResults = true;
+  state.recognition.maxAlternatives = 5;
+
+  state.recognition.onstart = () => {
+    state.finalTranscripts = [];
+    setListening(true);
+    elements.transcript.textContent = "أُنصت…";
+    elements.voiceHelp.textContent = "أنشد البيت كاملًا، ثم توقّف لحظة.";
+  };
+
+  state.recognition.onresult = event => {
+    let interim = "";
+    const finals = [];
+    for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      const result = event.results[index];
+      if (result.isFinal) {
+        for (let alternative = 0; alternative < result.length; alternative += 1) {
+          finals.push(result[alternative].transcript);
+        }
+      } else {
+        interim += result[0].transcript;
+      }
+    }
+    if (finals.length) state.finalTranscripts.push(...finals);
+    const visible = finals[0] || interim;
+    if (visible) elements.transcript.textContent = visible;
+  };
+
+  state.recognition.onerror = event => {
+    const messages = {
+      "not-allowed": "لم يُسمح باستخدام الميكروفون. فعّل الإذن من إعدادات الموقع.",
+      "audio-capture": "لم يعثر المتصفح على ميكروفون يعمل.",
+      "no-speech": "لم يُسمع صوت. اضغط الميكروفون وحاول مجددًا.",
+      "network": "تعذّر الوصول إلى خدمة التعرف الصوتي."
+    };
+    elements.voiceHelp.textContent = messages[event.error] || "حدث خطأ في الاستماع؛ حاول مرة أخرى.";
+  };
+
+  state.recognition.onend = () => {
+    setListening(false);
+    if (state.ignoreRecognitionEnd) {
+      state.ignoreRecognitionEnd = false;
+      state.finalTranscripts = [];
+      return;
+    }
+    const transcripts = [...state.finalTranscripts];
+    state.finalTranscripts = [];
+    if (transcripts.length) submitPlayerText(transcripts);
+  };
+}
+
+function toggleListening() {
+  if (!state.recognition || state.paused || state.inTransition) return;
+  if (state.listening) {
+    try {
+      state.recognition.stop();
+    } catch {
+      setListening(false);
+    }
+    return;
+  }
+
+  state.ignoreRecognitionEnd = false;
+  hideFeedback();
+  try {
+    state.recognition.start();
+  } catch {
+    elements.voiceHelp.textContent = "انتظر لحظة ثم حاول تشغيل الميكروفون مجددًا.";
   }
 }
 
 async function loadVerses() {
+  const readinessText = elements.voiceReadiness.querySelector("span:last-child");
   try {
     const response = await fetch("data/verses.json");
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -335,32 +520,54 @@ async function loadVerses() {
       throw new Error("Invalid verse inventory");
     }
     state.verses = data.verses;
-    state.meters = [...new Set(data.verses.map(verse => verse.meter))];
-    elements.loadStatus.textContent = "الديوان مفتوح — اختر مجلسك";
-    elements.modeButtons.forEach(button => { button.disabled = false; });
+    elements.start.disabled = false;
+    if (Recognition) {
+      elements.voiceReadiness.classList.add("is-ready");
+      readinessText.textContent = "الديوان والصوت جاهزان";
+    } else {
+      elements.voiceReadiness.classList.add("is-limited");
+      readinessText.textContent = "الديوان جاهز؛ الصوت غير مدعوم في هذا المتصفح";
+    }
   } catch (error) {
     console.error(error);
-    elements.loadStatus.textContent = "تعذّر فتح الديوان. أعد تحميل الصفحة.";
-    elements.modeButtons.forEach(button => { button.disabled = true; });
+    elements.voiceReadiness.classList.add("is-limited");
+    readinessText.textContent = "تعذّر فتح الديوان. أعد تحميل الصفحة.";
   }
 }
 
-elements.modeButtons.forEach(button => {
-  button.disabled = true;
-  button.addEventListener("click", () => startGame(button.dataset.mode));
+elements.timerInput.addEventListener("input", event => setDuration(Number(event.target.value)));
+elements.durationButtons.forEach(button => {
+  button.addEventListener("click", () => setDuration(Number(button.dataset.duration)));
 });
+elements.start.addEventListener("click", startDuel);
+elements.replay.addEventListener("click", startDuel);
+elements.quit.addEventListener("click", () => finishDuel("ended"));
+elements.endDuel.addEventListener("click", () => finishDuel("ended"));
 elements.homeButtons.forEach(button => button.addEventListener("click", goHome));
+elements.timeMinus.addEventListener("click", () => adjustTurnTime(-5));
+elements.timePlus.addEventListener("click", () => adjustTurnTime(5));
+elements.pause.addEventListener("click", togglePause);
+elements.listen.addEventListener("click", toggleListening);
+elements.checkText.addEventListener("click", () => submitPlayerText(elements.manualInput.value));
+elements.manualInput.addEventListener("keydown", event => {
+  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+    submitPlayerText(elements.manualInput.value);
+  }
+});
 elements.aboutButtons.forEach(button => button.addEventListener("click", () => elements.aboutDialog.showModal()));
 elements.closeAbout.addEventListener("click", () => elements.aboutDialog.close());
 elements.aboutDialog.addEventListener("click", event => {
   if (event.target === elements.aboutDialog) elements.aboutDialog.close();
 });
-elements.next.addEventListener("click", nextQuestion);
-elements.quit.addEventListener("click", goHome);
-elements.replay.addEventListener("click", replay);
-document.addEventListener("keydown", handleKeyboard);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && state.duelActive && !state.paused && state.selectedDuration !== 0) {
+    togglePause();
+  }
+});
 
-updateBestScore();
+setDuration(30);
+saveBestChain(getBestChain());
+initializeRecognition();
 showScreen("start");
 loadVerses();
 

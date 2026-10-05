@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#123d3a">
-    <meta name="description" content="ساجِل الراوي — لعبة عربية لاختبار الذاكرة الشعرية ومعرفة بحور الشعر من مخزون يضم ١٠٠٠ بيت حقيقي.">
-    <title>ساجِل الراوي</title>
+    <meta name="description" content="ساجِل الراوي — مساجلة شعرية صوتية من مخزون يضم ١٠٠٠ بيت عربي.">
+    <title>ساجِل الراوي — مساجلة شعرية</title>
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="stylesheet" href="styles.css">
@@ -17,131 +17,182 @@
       <header class="site-header">
         <button class="brand" type="button" data-go-home aria-label="العودة إلى البداية">
           <span class="brand-mark" aria-hidden="true">س</span>
-          <span>
-            <strong>ساجِل</strong>
-            <small>الرّاوي</small>
-          </span>
+          <span><strong>ساجِل</strong><small>الرّاوي</small></span>
         </button>
-        <button class="text-button" type="button" data-open-about>عن المخزون</button>
+        <button class="text-button" type="button" data-open-about>كيف ألعب؟</button>
       </header>
 
       <main id="main">
         <section class="screen start-screen is-active" data-screen="start" aria-labelledby="start-title">
           <div class="hero">
-            <p class="eyebrow">لعبة في ذاكرة الشعر العربي</p>
-            <h1 id="start-title">هل تُكمل البيت<br><span>قبل أن يسبقك الراوي؟</span></h1>
-            <p class="hero-copy">اختبر حفظك وحدسك العروضي في عشر جولات سريعة، من مخزون يضم ألف بيت عربي منشور.</p>
+            <p class="eyebrow">مساجلة شعرية بصوتك</p>
+            <h1 id="start-title">آخرُ حرفٍ منه<br><span>أوّلُ بيتٍ منك</span></h1>
+            <p class="hero-copy">يقول الراوي بيتًا، فتجيبه ببيت يبدأ بآخر حرف منه. إن صحّ بيتك، ردّ عليك الراوي واستمرت المساجلة.</p>
           </div>
 
-          <div class="inventory-strip" aria-label="إحصاءات اللعبة">
+          <div class="rule-line" aria-label="طريقة اللعب">
+            <div><span>١</span><p><strong>اقرأ بيت الراوي</strong><small>وانتبه إلى آخر حرفه.</small></p></div>
+            <i aria-hidden="true">←</i>
+            <div><span>٢</span><p><strong>اضغط الميكروفون</strong><small>وأنشد بيتًا من مخزون اللعبة.</small></p></div>
+            <i aria-hidden="true">←</i>
+            <div><span>٣</span><p><strong>واصل السلسلة</strong><small>قبل أن ينتهي وقتك.</small></p></div>
+          </div>
+
+          <section class="setup-card" aria-labelledby="timer-title">
+            <div class="setup-copy">
+              <p class="eyebrow">إعداد المجلس</p>
+              <h2 id="timer-title">كم تريد لدورك؟</h2>
+              <p>يمكنك تغيير الزمن أو إيقافه مؤقتًا داخل المساجلة أيضًا.</p>
+            </div>
+
+            <div class="timer-setting">
+              <output data-timer-output for="turn-duration">٣٠ ثانية</output>
+              <input id="turn-duration" data-timer-input type="range" min="10" max="120" step="5" value="30" aria-label="مدة الدور بالثواني">
+              <div class="timer-presets" aria-label="مدد مقترحة">
+                <button type="button" data-duration="20">٢٠ ث</button>
+                <button type="button" data-duration="30" class="is-selected">٣٠ ث</button>
+                <button type="button" data-duration="60">٦٠ ث</button>
+                <button type="button" data-duration="0">بلا مؤقّت</button>
+              </div>
+            </div>
+
+            <div class="start-actions">
+              <button class="primary-button primary-button--large" type="button" data-start disabled>
+                ابدأ المساجلة
+                <span aria-hidden="true">←</span>
+              </button>
+              <div class="voice-readiness" data-voice-readiness role="status">
+                <span class="status-dot"></span>
+                <span>يُفتح الديوان…</span>
+              </div>
+            </div>
+          </section>
+
+          <div class="inventory-strip" aria-label="إحصاءات الديوان">
             <div><strong>١٠٠٠</strong><span>بيت حقيقي</span></div>
             <div><strong>١٤</strong><span>بحرًا شعريًا</span></div>
-            <div><strong>١٠</strong><span>جولات</span></div>
+            <div><strong data-best-chain>٠</strong><span>أفضل سلسلة لك</span></div>
           </div>
-
-          <div class="mode-section">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">اختر مجلسك</p>
-                <h2>بمَ تريد أن تبدأ؟</h2>
-              </div>
-              <p class="best-score">أفضل نتيجة <strong data-best-score>٠</strong></p>
-            </div>
-
-            <div class="mode-grid">
-              <button class="mode-card mode-card--featured" type="button" data-mode="complete">
-                <span class="mode-number">١</span>
-                <span class="mode-content"><strong>أكمل البيت</strong><small>اختر عجز البيت الصحيح من أربعة اقتراحات.</small></span>
-                <span class="mode-arrow" aria-hidden="true">←</span>
-              </button>
-
-              <button class="mode-card" type="button" data-mode="meter">
-                <span class="mode-number">٢</span>
-                <span class="mode-content"><strong>اعرف البحر</strong><small>اقرأ البيت وحدّد بحره الشعري.</small></span>
-                <span class="mode-arrow" aria-hidden="true">←</span>
-              </button>
-
-              <button class="mode-card" type="button" data-mode="mixed">
-                <span class="mode-number">٣</span>
-                <span class="mode-content"><strong>مجلس الراوي</strong><small>تحدٍ مختلط بين إكمال البيت ومعرفة البحر.</small></span>
-                <span class="mode-arrow" aria-hidden="true">←</span>
-              </button>
-            </div>
-          </div>
-
-          <p class="load-status" data-load-status role="status">يُفتح الديوان…</p>
         </section>
 
-        <section class="screen game-screen" data-screen="game" aria-labelledby="question-title">
-          <div class="game-topbar">
-            <button class="icon-button" type="button" data-quit aria-label="إنهاء الجولة والعودة">×</button>
-            <div class="round-progress" aria-label="تقدّم الجولة">
-              <span>السؤال <strong data-round-current>١</strong> من <strong>١٠</strong></span>
-              <div class="progress-track"><span data-progress-bar></span></div>
+        <section class="screen duel-screen" data-screen="duel" aria-labelledby="duel-title">
+          <div class="duel-topbar">
+            <button class="icon-button" type="button" data-quit aria-label="إنهاء المساجلة">×</button>
+            <div class="duel-stat">
+              <span>سلسلتك</span>
+              <strong data-chain>٠</strong>
             </div>
-            <div class="score-pill"><span>النقاط</span><strong data-score>٠</strong></div>
+            <div class="duel-stat">
+              <span>النقاط</span>
+              <strong data-score>٠</strong>
+            </div>
+            <div class="timer-control" data-timer-control>
+              <button type="button" data-time-minus aria-label="إنقاص خمس ثوانٍ">−٥</button>
+              <div><strong data-time>٣٠</strong><span>ثانية</span></div>
+              <button type="button" data-time-plus aria-label="زيادة خمس ثوانٍ">+٥</button>
+              <button class="pause-button" type="button" data-pause>إيقاف</button>
+            </div>
           </div>
 
-          <article class="question-card">
-            <div class="question-meta">
-              <span class="question-kind" data-question-kind>أكمل البيت</span>
-              <span class="timer" data-timer><b data-time>٢٠</b> ثانية</span>
-            </div>
-            <div class="timer-track" aria-hidden="true"><span data-timer-bar></span></div>
+          <div class="timer-track" data-timer-track aria-hidden="true"><span data-timer-bar></span></div>
 
-            <div class="verse-prompt">
-              <p class="prompt-label" data-prompt-label>اختر العجز الصحيح</p>
-              <h2 id="question-title" data-question-text></h2>
-              <p class="question-mark" data-question-mark aria-hidden="true">…</p>
+          <section class="duel-board">
+            <article class="narrator-turn">
+              <div class="turn-heading">
+                <span class="speaker-avatar" aria-hidden="true">ر</span>
+                <div><small>قال الراوي</small><strong data-round-label>فاتحة المجلس</strong></div>
+              </div>
+              <blockquote id="duel-title">
+                <span data-narrator-first></span>
+                <b aria-hidden="true">۞</b>
+                <span data-narrator-second></span>
+              </blockquote>
+            </article>
+
+            <div class="letter-bridge">
+              <span>ابدأ بحرف</span>
+              <strong data-required-letter>م</strong>
             </div>
 
-            <div class="answers" data-answers aria-label="الخيارات"></div>
+            <article class="player-turn">
+              <div class="turn-heading">
+                <span class="speaker-avatar speaker-avatar--you" aria-hidden="true">أ</span>
+                <div><small>دورك الآن</small><strong data-turn-prompt>أنشد بيتك بصوت واضح</strong></div>
+              </div>
 
-            <div class="feedback" data-feedback aria-live="polite" hidden>
-              <div><strong data-feedback-title></strong><p data-feedback-text></p></div>
-              <button class="primary-button" type="button" data-next>التالي</button>
-            </div>
-          </article>
-          <p class="keyboard-hint">يمكنك الاختيار بالمفاتيح ١–٤</p>
+              <div class="transcript-box" data-transcript-box>
+                <span class="quote-mark" aria-hidden="true">”</span>
+                <p data-transcript>سيظهر هنا ما يسمعه الراوي…</p>
+                <span class="listening-waves" data-waves aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+              </div>
+
+              <div class="voice-controls">
+                <button class="mic-button" type="button" data-listen>
+                  <span class="mic-icon" aria-hidden="true"></span>
+                  <span data-listen-label>ابدأ الاستماع</span>
+                </button>
+                <p data-voice-help>عند أول مرة، اسمح للمتصفح باستخدام الميكروفون.</p>
+              </div>
+
+              <details class="manual-entry">
+                <summary>أو اكتب البيت بدلًا من إنشاده</summary>
+                <div>
+                  <textarea data-manual-input rows="2" placeholder="اكتب صدر البيت وعجزه هنا…" aria-label="نص البيت"></textarea>
+                  <button class="secondary-button" type="button" data-check-text>تحقّق</button>
+                </div>
+              </details>
+
+              <div class="turn-feedback" data-feedback aria-live="polite" hidden>
+                <span data-feedback-icon aria-hidden="true">✓</span>
+                <div><strong data-feedback-title></strong><p data-feedback-text></p></div>
+              </div>
+            </article>
+          </section>
+
+          <div class="duel-footer">
+            <p>يُقبل البيت الأقرب نصًا من مخزون اللعبة، مع تجاهل التشكيل.</p>
+            <button class="text-button danger-link" type="button" data-end-duel>إنهاء المساجلة</button>
+          </div>
         </section>
 
         <section class="screen result-screen" data-screen="result" aria-labelledby="result-title">
           <div class="result-card">
             <p class="eyebrow">انفضّ المجلس</p>
-            <div class="result-seal" aria-hidden="true"><span data-result-grade>أ</span></div>
-            <h2 id="result-title" data-result-title>أحسنت يا راوي</h2>
+            <div class="result-seal" aria-hidden="true"><span data-result-grade>م</span></div>
+            <h2 id="result-title" data-result-title>مساجلة موفّقة</h2>
             <p data-result-message></p>
             <div class="result-score"><strong data-final-score>٠</strong><span>نقطة</span></div>
             <div class="result-stats">
-              <div><strong data-correct-count>٠</strong><span>إجابة صحيحة</span></div>
-              <div><strong data-best-streak>٠</strong><span>أطول سلسلة</span></div>
-              <div><strong data-result-best>٠</strong><span>أفضل نتيجة</span></div>
+              <div><strong data-final-chain>٠</strong><span>أبيات صحيحة</span></div>
+              <div><strong data-final-rounds>١</strong><span>أدوار الراوي</span></div>
+              <div><strong data-final-best>٠</strong><span>أفضل سلسلة</span></div>
             </div>
             <div class="result-actions">
-              <button class="primary-button" type="button" data-replay>جولة أخرى</button>
-              <button class="secondary-button" type="button" data-go-home>تغيير المجلس</button>
+              <button class="primary-button" type="button" data-replay>مساجلة جديدة</button>
+              <button class="secondary-button" type="button" data-go-home>ضبط المؤقّت</button>
             </div>
           </div>
         </section>
       </main>
 
       <footer>
-        <span>ساجِل الراوي · صنعة تحب العربية</span>
-        <button type="button" data-open-about>مصدر الأبيات ومنهج الاختيار</button>
+        <span>ساجِل الراوي · مساجلة من ألف بيت عربي</span>
+        <button type="button" data-open-about>القواعد والصوت والمصدر</button>
       </footer>
     </div>
 
     <dialog class="about-dialog" data-about-dialog>
       <button class="dialog-close" type="button" data-close-about aria-label="إغلاق">×</button>
-      <p class="eyebrow">عن الديوان</p>
-      <h2>ألف بيت، بلا توليد آلي</h2>
-      <p>يضم المخزون عيّنة متوازنة من ١٠٠٠ بيت عربي منشور، موزّعة على ١٤ بحرًا. حُذفت السطور الناقصة والمكررة آليًا، مع إبقاء نص البيت وتصنيف البحر الواردين في المصدر.</p>
-      <dl>
-        <div><dt>الأبيات</dt><dd>١٠٠٠</dd></div>
-        <div><dt>البحور</dt><dd>١٤</dd></div>
-        <div><dt>التوزيع</dt><dd>٧١–٧٢ لكل بحر</dd></div>
-      </dl>
-      <a class="source-link" href="https://github.com/HEGAB7/Arabic-poems-classifier/blob/main/poems.csv" target="_blank" rel="noreferrer">عرض مصدر البيانات ↗</a>
+      <p class="eyebrow">قواعد المجلس</p>
+      <h2>مساجلة بيتٍ ببيت</h2>
+      <ol>
+        <li>ابدأ بيتك بالحرف الأخير من بيت الراوي.</li>
+        <li>أنشد بيتًا كاملًا موجودًا في مخزون اللعبة.</li>
+        <li>لا يجوز تكرار بيت استُخدم في المجلس نفسه.</li>
+        <li>التاء المربوطة تُعامل تاءً، والألف المقصورة ياءً.</li>
+      </ol>
+      <p class="privacy-note">يبدأ الاستماع فقط عند ضغط زر الميكروفون وبإذنك. قد يعالج المتصفح الصوت محليًا أو عبر خدمة تعرّف خارجية بحسب المتصفح والجهاز.</p>
+      <a class="source-link" href="DATA_SOURCES.md" target="_blank">مصدر الأبيات ومنهج الاختيار ↗</a>
     </dialog>
 
     <div class="toast" data-toast role="status" aria-live="polite"></div>
