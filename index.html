@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#123d3a">
+    <meta name="description" content="ساجِل الراوي — لعبة عربية لاختبار الذاكرة الشعرية ومعرفة بحور الشعر من مخزون يضم ١٠٠٠ بيت حقيقي.">
+    <title>ساجِل الراوي</title>
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">انتقل إلى المحتوى</a>
+
+    <div class="page-shell">
+      <header class="site-header">
+        <button class="brand" type="button" data-go-home aria-label="العودة إلى البداية">
+          <span class="brand-mark" aria-hidden="true">س</span>
+          <span>
+            <strong>ساجِل</strong>
+            <small>الرّاوي</small>
+          </span>
+        </button>
+        <button class="text-button" type="button" data-open-about>عن المخزون</button>
+      </header>
+
+      <main id="main">
+        <section class="screen start-screen is-active" data-screen="start" aria-labelledby="start-title">
+          <div class="hero">
+            <p class="eyebrow">لعبة في ذاكرة الشعر العربي</p>
+            <h1 id="start-title">هل تُكمل البيت<br><span>قبل أن يسبقك الراوي؟</span></h1>
+            <p class="hero-copy">اختبر حفظك وحدسك العروضي في عشر جولات سريعة، من مخزون يضم ألف بيت عربي منشور.</p>
+          </div>
+
+          <div class="inventory-strip" aria-label="إحصاءات اللعبة">
+            <div><strong>١٠٠٠</strong><span>بيت حقيقي</span></div>
+            <div><strong>١٤</strong><span>بحرًا شعريًا</span></div>
+            <div><strong>١٠</strong><span>جولات</span></div>
+          </div>
+
+          <div class="mode-section">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">اختر مجلسك</p>
+                <h2>بمَ تريد أن تبدأ؟</h2>
+              </div>
+              <p class="best-score">أفضل نتيجة <strong data-best-score>٠</strong></p>
+            </div>
+
+            <div class="mode-grid">
+              <button class="mode-card mode-card--featured" type="button" data-mode="complete">
+                <span class="mode-number">١</span>
+                <span class="mode-content"><strong>أكمل البيت</strong><small>اختر عجز البيت الصحيح من أربعة اقتراحات.</small></span>
+                <span class="mode-arrow" aria-hidden="true">←</span>
+              </button>
+
+              <button class="mode-card" type="button" data-mode="meter">
+                <span class="mode-number">٢</span>
+                <span class="mode-content"><strong>اعرف البحر</strong><small>اقرأ البيت وحدّد بحره الشعري.</small></span>
+                <span class="mode-arrow" aria-hidden="true">←</span>
+              </button>
+
+              <button class="mode-card" type="button" data-mode="mixed">
+                <span class="mode-number">٣</span>
+                <span class="mode-content"><strong>مجلس الراوي</strong><small>تحدٍ مختلط بين إكمال البيت ومعرفة البحر.</small></span>
+                <span class="mode-arrow" aria-hidden="true">←</span>
+              </button>
+            </div>
+          </div>
+
+          <p class="load-status" data-load-status role="status">يُفتح الديوان…</p>
+        </section>
+
+        <section class="screen game-screen" data-screen="game" aria-labelledby="question-title">
+          <div class="game-topbar">
+            <button class="icon-button" type="button" data-quit aria-label="إنهاء الجولة والعودة">×</button>
+            <div class="round-progress" aria-label="تقدّم الجولة">
+              <span>السؤال <strong data-round-current>١</strong> من <strong>١٠</strong></span>
+              <div class="progress-track"><span data-progress-bar></span></div>
+            </div>
+            <div class="score-pill"><span>النقاط</span><strong data-score>٠</strong></div>
+          </div>
+
+          <article class="question-card">
+            <div class="question-meta">
+              <span class="question-kind" data-question-kind>أكمل البيت</span>
+              <span class="timer" data-timer><b data-time>٢٠</b> ثانية</span>
+            </div>
+            <div class="timer-track" aria-hidden="true"><span data-timer-bar></span></div>
+
+            <div class="verse-prompt">
+              <p class="prompt-label" data-prompt-label>اختر العجز الصحيح</p>
+              <h2 id="question-title" data-question-text></h2>
+              <p class="question-mark" data-question-mark aria-hidden="true">…</p>
+            </div>
+
+            <div class="answers" data-answers aria-label="الخيارات"></div>
+
+            <div class="feedback" data-feedback aria-live="polite" hidden>
+              <div><strong data-feedback-title></strong><p data-feedback-text></p></div>
+              <button class="primary-button" type="button" data-next>التالي</button>
+            </div>
+          </article>
+          <p class="keyboard-hint">يمكنك الاختيار بالمفاتيح ١–٤</p>
+        </section>
+
+        <section class="screen result-screen" data-screen="result" aria-labelledby="result-title">
+          <div class="result-card">
+            <p class="eyebrow">انفضّ المجلس</p>
+            <div class="result-seal" aria-hidden="true"><span data-result-grade>أ</span></div>
+            <h2 id="result-title" data-result-title>أحسنت يا راوي</h2>
+            <p data-result-message></p>
+            <div class="result-score"><strong data-final-score>٠</strong><span>نقطة</span></div>
+            <div class="result-stats">
+              <div><strong data-correct-count>٠</strong><span>إجابة صحيحة</span></div>
+              <div><strong data-best-streak>٠</strong><span>أطول سلسلة</span></div>
+              <div><strong data-result-best>٠</strong><span>أفضل نتيجة</span></div>
+            </div>
+            <div class="result-actions">
+              <button class="primary-button" type="button" data-replay>جولة أخرى</button>
+              <button class="secondary-button" type="button" data-go-home>تغيير المجلس</button>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <span>ساجِل الراوي · صنعة تحب العربية</span>
+        <button type="button" data-open-about>مصدر الأبيات ومنهج الاختيار</button>
+      </footer>
+    </div>
+
+    <dialog class="about-dialog" data-about-dialog>
+      <button class="dialog-close" type="button" data-close-about aria-label="إغلاق">×</button>
+      <p class="eyebrow">عن الديوان</p>
+      <h2>ألف بيت، بلا توليد آلي</h2>
+      <p>يضم المخزون عيّنة متوازنة من ١٠٠٠ بيت عربي منشور، موزّعة على ١٤ بحرًا. حُذفت السطور الناقصة والمكررة آليًا، مع إبقاء نص البيت وتصنيف البحر الواردين في المصدر.</p>
+      <dl>
+        <div><dt>الأبيات</dt><dd>١٠٠٠</dd></div>
+        <div><dt>البحور</dt><dd>١٤</dd></div>
+        <div><dt>التوزيع</dt><dd>٧١–٧٢ لكل بحر</dd></div>
+      </dl>
+      <a class="source-link" href="https://github.com/HEGAB7/Arabic-poems-classifier/blob/main/poems.csv" target="_blank" rel="noreferrer">عرض مصدر البيانات ↗</a>
+    </dialog>
+
+    <div class="toast" data-toast role="status" aria-live="polite"></div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

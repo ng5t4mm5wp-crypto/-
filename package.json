@@ -1,0 +1,10 @@
+{
+  "name": "sajil-alrawi",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/validate-data.mjs && node --check app.js && node --check sw.js",
+    "serve": "python3 -m http.server 4173"
+  }
+}
