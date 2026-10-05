@@ -3,7 +3,7 @@ import {
   chooseOpeningVerse,
   findBestMatch,
   lastArabicLetter
-} from "./game-core.js?v=5";
+} from "./game-core.js?v=6";
 
 const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -76,8 +76,7 @@ const state = {
   interimTranscript: "",
   recognitionRestartTimer: null,
   recognition: null,
-  microphoneStream: null,
-  openingMicrophone: false,
+  recognitionLanguage: "ar-SA",
   usedIds: new Set(),
   narrator: null,
   requiredLetter: "",
@@ -233,12 +232,6 @@ function clearRecognitionTimers() {
   }
 }
 
-function closeMicrophoneStream() {
-  if (!state.microphoneStream) return;
-  state.microphoneStream.getTracks().forEach(track => track.stop());
-  state.microphoneStream = null;
-}
-
 function resetRecognitionText() {
   state.finalSegments = [];
   state.alternativeTranscripts = [];
@@ -252,7 +245,6 @@ function recognitionCandidates() {
 
 function submitRecognitionText() {
   const transcripts = recognitionCandidates();
-  closeMicrophoneStream();
   resetRecognitionText();
   state.submitOnRecognitionEnd = false;
   if (transcripts.length) {
@@ -308,7 +300,6 @@ function finishListeningAndSubmit() {
 function stopRecognition(ignoreEnd = false) {
   if (!state.recognition) return;
   clearRecognitionTimers();
-  closeMicrophoneStream();
   const wasActive = state.recognitionActive;
   setListening(false);
   state.submitOnRecognitionEnd = false;
@@ -533,7 +524,7 @@ function initializeRecognition() {
   }
 
   state.recognition = new Recognition();
-  state.recognition.lang = "ar-SA";
+  state.recognition.lang = state.recognitionLanguage;
   state.recognition.continuous = true;
   state.recognition.interimResults = true;
   state.recognition.maxAlternatives = 5;
@@ -579,10 +570,21 @@ function initializeRecognition() {
       "language-not-supported": "هذا المتصفح لا يدعم التعرف الصوتي باللغة العربية."
     };
     elements.voiceHelp.textContent = messages[event.error] || "حدث خطأ في الاستماع؛ حاول مرة أخرى.";
+    if (event.error === "language-not-supported" && state.recognitionLanguage !== "ar") {
+      state.recognitionLanguage = "ar";
+      state.recognition.lang = "ar";
+      elements.voiceHelp.textContent = "أعيد تشغيل التعرف بإعداد العربية العام…";
+      scheduleRecognitionRestart();
+      return;
+    }
     if (["not-allowed", "audio-capture", "network", "language-not-supported"].includes(event.error)) {
       clearRecognitionTimers();
       setListening(false);
-      closeMicrophoneStream();
+      showFeedback(
+        "error",
+        "أوقف المتصفح التعرّف الصوتي",
+        `${messages[event.error] || "تعذّر تشغيل الصوت."} — رمز الخطأ: ${event.error}`
+      );
     }
   };
 
@@ -607,51 +609,14 @@ function initializeRecognition() {
   };
 }
 
-async function openListeningSession() {
-  if (state.openingMicrophone) return;
-  state.openingMicrophone = true;
-  elements.listen.disabled = true;
+function openListeningSession() {
   hideFeedback();
   clearRecognitionTimers();
   resetRecognitionText();
-
-  try {
-    if (navigator.mediaDevices?.getUserMedia) {
-      state.microphoneStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        },
-        video: false
-      });
-    }
-  } catch (error) {
-    console.error(error);
-    showFeedback(
-      "error",
-      "تعذّر فتح الميكروفون",
-      "تحقق من إذن الميكروفون في المتصفح وإعدادات النظام، ثم حاول مجددًا."
-    );
-    elements.voiceHelp.textContent = "لم يحصل الموقع على صوت من الميكروفون.";
-    state.openingMicrophone = false;
-    elements.listen.disabled = false;
-    return;
-  }
-
-  if (!state.duelActive || state.paused || state.inTransition) {
-    closeMicrophoneStream();
-    state.openingMicrophone = false;
-    elements.listen.disabled = false;
-    return;
-  }
-
   state.submitOnRecognitionEnd = false;
   elements.transcript.textContent = "الميكروفون مفتوح… ابدأ الإنشاد";
   elements.voiceHelp.textContent = "ستبقى الكلمات أمامك، ولن يعتمد البيت حتى تغلق الميكروفون بنفسك.";
   setListening(true);
-  elements.listen.disabled = false;
-  state.openingMicrophone = false;
   startRecognitionEngine();
 }
 
@@ -667,7 +632,7 @@ function toggleListening() {
 async function loadVerses() {
   const readinessText = elements.voiceReadiness.querySelector("span:last-child");
   try {
-    const response = await fetch("data/verses.json?v=5");
+    const response = await fetch("data/verses.json?v=6");
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (!Array.isArray(data.verses) || data.verses.length !== 1000) {

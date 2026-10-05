@@ -32,8 +32,9 @@ assert.match(html, /data-timer-input/);
 assert.doesNotMatch(html, /data-mode=/);
 assert.match(app, /recognition\.continuous = true/);
 assert.match(app, /scheduleRecognitionRestart/);
-assert.match(app, /navigator\.mediaDevices\?\.getUserMedia/);
+assert.doesNotMatch(app, /getUserMedia/);
 assert.doesNotMatch(app, /silenceTimer/);
+assert.match(app, /رمز الخطأ/);
 assert.match(app, /serviceWorker\.getRegistrations/);
 assert.match(worker, /registration\.unregister/);
 
