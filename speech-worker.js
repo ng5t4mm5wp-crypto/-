@@ -18,7 +18,7 @@ async function getTranscriber() {
   if (!transcriberPromise) {
     transcriberPromise = pipeline(
       "automatic-speech-recognition",
-      "Xenova/whisper-tiny",
+      "Xenova/whisper-base",
       {
         quantized: true,
         progress_callback: reportProgress
@@ -44,8 +44,8 @@ async function transcribe(message) {
     const output = await transcriber(message.audio, {
       language: "arabic",
       task: "transcribe",
-      top_k: 0,
       do_sample: false,
+      num_beams: 2,
       chunk_length_s: 30,
       stride_length_s: 5,
       return_timestamps: false

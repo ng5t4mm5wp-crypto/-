@@ -1,7 +1,7 @@
 {
   "meta": {"title":"مخزون ساجِل الراوي","count":1000,"meters":14,"generatedAt":"2026-10-05","sourceName":"Arabic Poems Classifier / MetRec-derived corpus","sourceUrl":"https://github.com/HEGAB7/Arabic-poems-classifier/blob/main/poems.csv","sourcePaper":"https://doi.org/10.1016/j.dib.2020.106497","note":"عيّنة حتمية متوازنة من أبيات عربية منشورة؛ لا تتضمن أبياتًا مولّدة آليًا."},
   "verses": [
-    {"id":1,"first":"أحبابنا لا تظنوني أقاد الى","second":"قوم سواكم فأسلوكم وأتبع","meter":"البسيط","meterKey":"baseet"},
+    {"id":1,"first":"أنا الذي نظر الأعمى إلى أدبي","second":"وأسمعت كلماتي من به صمم","meter":"البسيط","meterKey":"baseet"},
     {"id":2,"first":"إذا بقي قل لها جلي أو هوني","second":"إنا نعزيك ما لسنا على ثقة","meter":"البسيط","meterKey":"baseet"},
     {"id":3,"first":"أرى الجناية إحسانا فأشكره","second":"من لي به وهو سلطان يمر على","meter":"البسيط","meterKey":"baseet"},
     {"id":4,"first":"أطلالا عفت من أحباء وسكان","second":"لولاك يا ظبية الوعساء لم أجب","meter":"البسيط","meterKey":"baseet"},

@@ -21,6 +21,21 @@ assert.equal(lastArabicLetter("هذه قصيدة"), "ت");
 assert.equal(lastArabicLetter("إلى المدى"), "ي");
 assert.ok(textSimilarity("ألا يا ليل", "الا يا ليل") > 0.95);
 
+const mutanabbiVerse = verses.find(verse =>
+  verse.first === "أنا الذي نظر الأعمى إلى أدبي"
+);
+assert.ok(mutanabbiVerse, "بيت المتنبي المرجعي غير موجود في الديوان");
+const noisySpeechResult = findBestMatch(
+  "أنا اللذين غير الأعمى إلى أدبي",
+  verses,
+  "ا"
+);
+assert.equal(
+  noisySpeechResult.match?.id,
+  mutanabbiVerse.id,
+  "لم تُصحّح زلة التعرّف الصوتي إلى بيت المتنبي"
+);
+
 for (const verse of verses) {
   assert.ok(firstArabicLetter(verse.first), `لا أول حرف للبيت ${verse.id}`);
   assert.ok(lastArabicLetter(verse.second), `لا آخر حرف للبيت ${verse.id}`);

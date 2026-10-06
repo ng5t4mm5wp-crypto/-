@@ -3,7 +3,7 @@ import {
   chooseOpeningVerse,
   findBestMatch,
   lastArabicLetter
-} from "./game-core.js?v=7";
+} from "./game-core.js?v=8";
 
 const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -289,6 +289,22 @@ function dispatchQueuedFinal() {
   requestTranscription(pending.audio, true, pending.sessionId);
 }
 
+function displayPreviewTranscript(transcript) {
+  const candidate = findBestMatch(
+    transcript,
+    state.verses,
+    state.requiredLetter,
+    state.usedIds,
+    0.62
+  );
+  if (candidate.match) {
+    elements.transcript.textContent = `${candidate.match.first} ۞ ${candidate.match.second}`;
+    elements.voiceHelp.textContent = "طابقتُ كلامك بأقرب بيت في الديوان؛ واصل ثم أغلق الميكروفون بنفسك.";
+    return;
+  }
+  elements.transcript.textContent = transcript;
+}
+
 function handleSpeechWorkerMessage(event) {
   const message = event.data || {};
   if (message.type === "progress") {
@@ -337,7 +353,7 @@ function handleSpeechWorkerMessage(event) {
       resumeTimer();
     }
   } else if (state.listening && transcript) {
-    elements.transcript.textContent = transcript;
+    displayPreviewTranscript(transcript);
   }
   dispatchQueuedFinal();
 }
@@ -346,7 +362,7 @@ function ensureSpeechWorker() {
   if (state.speechWorker && state.speechModelState !== "error") return;
   if (state.speechWorker) state.speechWorker.terminate();
   state.speechModelState = "loading";
-  state.speechWorker = new Worker("speech-worker.js?v=7", { type: "module" });
+  state.speechWorker = new Worker("speech-worker.js?v=8", { type: "module" });
   state.speechWorker.addEventListener("message", handleSpeechWorkerMessage);
   state.speechWorker.addEventListener("error", event => {
     handleSpeechFailure(new Error(event.message || "تعذّر تحميل عامل الصوت"));
@@ -731,7 +747,7 @@ function toggleListening() {
 async function loadVerses() {
   const readinessText = elements.voiceReadiness.querySelector("span:last-child");
   try {
-    const response = await fetch("data/verses.json?v=7");
+    const response = await fetch("data/verses.json?v=8");
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (!Array.isArray(data.verses) || data.verses.length !== 1000) {
