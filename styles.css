@@ -475,6 +475,11 @@ blockquote b { color: var(--gold); font-size: 1rem; }
 @keyframes wave { to { height: 13px; } }
 
 .voice-controls { display: grid; gap: 7px; place-items: center; }
+.model-progress {
+  width: min(290px, 78vw);
+  height: 7px;
+  accent-color: var(--gold);
+}
 .mic-button {
   display: flex;
   gap: 11px;

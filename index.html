@@ -8,7 +8,7 @@
     <title>ساجِل الراوي — مساجلة شعرية</title>
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=6">
+    <link rel="stylesheet" href="styles.css?v=7">
   </head>
   <body>
     <a class="skip-link" href="#main">انتقل إلى المحتوى</a>
@@ -131,7 +131,8 @@
                   <span class="mic-icon" aria-hidden="true"></span>
                   <span data-listen-label>افتح الميكروفون</span>
                 </button>
-                <p data-voice-help>عند أول مرة، اسمح للمتصفح باستخدام الميكروفون.</p>
+                <progress class="model-progress" data-model-progress max="100" value="0" hidden aria-label="تنزيل نموذج الصوت المحلي"></progress>
+                <p data-voice-help>عند أول استعمال اسمح بالميكروفون؛ سيُنزل نموذج صوت محلي مرة واحدة.</p>
               </div>
 
               <details class="manual-entry">
@@ -191,11 +192,11 @@
         <li>لا يجوز تكرار بيت استُخدم في المجلس نفسه.</li>
         <li>التاء المربوطة تُعامل تاءً، والألف المقصورة ياءً.</li>
       </ol>
-      <p class="privacy-note">يبدأ الاستماع فقط عند ضغط زر الميكروفون وبإذنك. قد يعالج المتصفح الصوت محليًا أو عبر خدمة تعرّف خارجية بحسب المتصفح والجهاز.</p>
+      <p class="privacy-note">يبدأ التسجيل فقط عند ضغط زر الميكروفون وبإذنك، ويبقى مفتوحًا حتى تغلقه أنت. يُحلّل الصوت داخل جهازك بنموذج Whisper محلي، ولا يُرسل إلى خدمة إملاء المتصفح.</p>
       <a class="source-link" href="DATA_SOURCES.md" target="_blank">مصدر الأبيات ومنهج الاختيار ↗</a>
     </dialog>
 
     <div class="toast" data-toast role="status" aria-live="polite"></div>
-    <script type="module" src="app.js?v=6"></script>
+    <script type="module" src="app.js?v=7"></script>
   </body>
 </html>

@@ -3,10 +3,15 @@ import {
   chooseOpeningVerse,
   findBestMatch,
   lastArabicLetter
-} from "./game-core.js?v=6";
+} from "./game-core.js?v=7";
 
 const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
-const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+const LOCAL_SPEECH_SUPPORTED = Boolean(
+  navigator.mediaDevices?.getUserMedia && AudioContextClass && window.Worker
+);
+const SPEECH_SAMPLE_RATE = 16000;
+const SPEECH_PREVIEW_INTERVAL = 6000;
 
 const elements = {
   screens: [...document.querySelectorAll("[data-screen]")],
@@ -42,6 +47,7 @@ const elements = {
   listen: document.querySelector("[data-listen]"),
   listenLabel: document.querySelector("[data-listen-label]"),
   voiceHelp: document.querySelector("[data-voice-help]"),
+  modelProgress: document.querySelector("[data-model-progress]"),
   manualEntry: document.querySelector(".manual-entry"),
   manualInput: document.querySelector("[data-manual-input]"),
   checkText: document.querySelector("[data-check-text]"),
@@ -68,15 +74,22 @@ const state = {
   timerId: null,
   paused: false,
   listening: false,
-  recognitionActive: false,
-  ignoreRecognitionEnd: false,
-  submitOnRecognitionEnd: false,
-  finalSegments: [],
-  alternativeTranscripts: [],
-  interimTranscript: "",
-  recognitionRestartTimer: null,
-  recognition: null,
-  recognitionLanguage: "ar-SA",
+  speechWorker: null,
+  speechModelState: "idle",
+  speechBusy: false,
+  speechRequestId: 0,
+  speechSessionId: 0,
+  speechPreviewTimer: null,
+  activeSpeechRequest: null,
+  pendingFinalAudio: null,
+  microphoneStream: null,
+  audioContext: null,
+  audioSource: null,
+  audioProcessor: null,
+  audioSink: null,
+  audioChunks: [],
+  audioSampleRate: SPEECH_SAMPLE_RATE,
+  lastPreviewSamples: 0,
   usedIds: new Set(),
   narrator: null,
   requiredLetter: "",
@@ -212,7 +225,7 @@ function togglePause() {
     state.paused = false;
     elements.pause.textContent = "إيقاف";
     elements.turnPrompt.textContent = "أنشد بيتك بصوت واضح";
-    elements.listen.disabled = !Recognition;
+    elements.listen.disabled = !LOCAL_SPEECH_SUPPORTED;
     resumeTimer();
   }
 }
@@ -225,96 +238,223 @@ function setListening(active) {
   elements.turnPrompt.textContent = active ? "الراوي يسمعك الآن…" : "أنشد بيتك بصوت واضح";
 }
 
-function clearRecognitionTimers() {
-  if (state.recognitionRestartTimer) {
-    window.clearTimeout(state.recognitionRestartTimer);
-    state.recognitionRestartTimer = null;
+function clearSpeechPreviewTimer() {
+  if (!state.speechPreviewTimer) return;
+  window.clearInterval(state.speechPreviewTimer);
+  state.speechPreviewTimer = null;
+}
+
+function formatModelProgress(progress) {
+  const value = Math.max(0, Math.min(100, Math.round(Number(progress) || 0)));
+  elements.modelProgress.hidden = false;
+  elements.modelProgress.value = value;
+  return toArabicNumber(value);
+}
+
+function explainSpeechError(error) {
+  const message = String(error?.message || error || "");
+  if (/NotAllowed|Permission|denied/i.test(message)) {
+    return "لم يُسمح باستخدام الميكروفون. فعّل الإذن من إعدادات الموقع ثم حاول مجددًا.";
   }
-}
-
-function resetRecognitionText() {
-  state.finalSegments = [];
-  state.alternativeTranscripts = [];
-  state.interimTranscript = "";
-}
-
-function recognitionCandidates() {
-  const primary = state.finalSegments.join(" ").trim();
-  return [...new Set([primary, ...state.alternativeTranscripts].map(value => value.trim()).filter(Boolean))];
-}
-
-function submitRecognitionText() {
-  const transcripts = recognitionCandidates();
-  resetRecognitionText();
-  state.submitOnRecognitionEnd = false;
-  if (transcripts.length) {
-    submitPlayerText(transcripts);
-  } else {
-    showFeedback("error", "لم أسمع بيتًا", "الميكروفون ما زال جاهزًا؛ اضغطه وحاول الإنشاد مجددًا.");
+  if (/NotFound|DevicesNotFound/i.test(message)) {
+    return "لم يعثر المتصفح على ميكروفون يعمل.";
   }
+  if (/network|fetch|load|import/i.test(message)) {
+    return "تعذّر تنزيل نموذج الصوت المحلي. تحقق من الاتصال ثم أعد المحاولة؛ بعد تنزيله يعمل من ذاكرة المتصفح.";
+  }
+  return `تعذّر تشغيل التعرّف المحلي${message ? `: ${message}` : "."}`;
 }
 
-function startRecognitionEngine() {
+function handleSpeechFailure(error) {
+  console.error(error);
+  const explanation = explainSpeechError(error);
+  stopLocalCapture();
+  setListening(false);
+  state.speechModelState = "error";
+  state.speechBusy = false;
+  state.activeSpeechRequest = null;
+  state.pendingFinalAudio = null;
+  elements.modelProgress.hidden = true;
+  elements.listen.disabled = !LOCAL_SPEECH_SUPPORTED || state.paused || state.inTransition;
+  elements.voiceHelp.textContent = explanation;
+  elements.manualEntry.open = true;
+  showFeedback("error", "تعذّر التعرّف المحلي", `${explanation} ويمكنك كتابة البيت الآن.`);
+  resumeTimer();
+}
+
+function dispatchQueuedFinal() {
+  if (!state.pendingFinalAudio || state.speechModelState !== "ready" || state.speechBusy) return;
+  const pending = state.pendingFinalAudio;
+  state.pendingFinalAudio = null;
+  requestTranscription(pending.audio, true, pending.sessionId);
+}
+
+function handleSpeechWorkerMessage(event) {
+  const message = event.data || {};
+  if (message.type === "progress") {
+    const percent = formatModelProgress(message.progress);
+    elements.voiceHelp.textContent = `جار تنزيل نموذج الصوت المحلي: ${percent}٪ — يحدث هذا في أول استعمال فقط.`;
+    return;
+  }
+  if (message.type === "ready") {
+    state.speechModelState = "ready";
+    elements.modelProgress.hidden = true;
+    elements.voiceHelp.textContent = state.listening
+      ? "الميكروفون مفتوح. أنشد، ثم اضغط «أغلق واعتمد البيت» بنفسك."
+      : "نموذج الصوت المحلي جاهز.";
+    if (state.listening) resumeTimer();
+    dispatchQueuedFinal();
+    return;
+  }
+  if (message.type === "error") {
+    handleSpeechFailure(new Error(message.error || "Local speech error"));
+    return;
+  }
+  if (message.type !== "result") return;
+
+  const request = state.activeSpeechRequest;
+  state.speechBusy = false;
+  state.activeSpeechRequest = null;
   if (
-    !state.recognition ||
-    state.recognitionActive ||
-    !state.listening ||
-    state.paused ||
-    state.inTransition ||
-    !state.duelActive
-  ) return;
-
-  state.ignoreRecognitionEnd = false;
-  try {
-    state.recognition.start();
-  } catch {
-    state.recognitionRestartTimer = window.setTimeout(startRecognitionEngine, 350);
+    !request ||
+    request.id !== message.requestId ||
+    request.sessionId !== message.sessionId ||
+    request.sessionId !== state.speechSessionId
+  ) {
+    dispatchQueuedFinal();
+    return;
   }
+
+  const transcript = String(message.text || "").trim();
+  if (request.final) {
+    elements.listen.disabled = !LOCAL_SPEECH_SUPPORTED;
+    elements.voiceHelp.textContent = "اكتمل تحليل التسجيل محليًا.";
+    if (transcript) {
+      elements.transcript.textContent = transcript;
+      submitPlayerText(transcript);
+    } else {
+      showFeedback("error", "لم أسمع بيتًا واضحًا", "افتح الميكروفون وحاول مرة أخرى، أو اكتب البيت يدويًا.");
+      resumeTimer();
+    }
+  } else if (state.listening && transcript) {
+    elements.transcript.textContent = transcript;
+  }
+  dispatchQueuedFinal();
 }
 
-function scheduleRecognitionRestart() {
-  if (!state.listening || state.recognitionRestartTimer) return;
-  state.recognitionRestartTimer = window.setTimeout(() => {
-    state.recognitionRestartTimer = null;
-    startRecognitionEngine();
-  }, 300);
+function ensureSpeechWorker() {
+  if (state.speechWorker && state.speechModelState !== "error") return;
+  if (state.speechWorker) state.speechWorker.terminate();
+  state.speechModelState = "loading";
+  state.speechWorker = new Worker("speech-worker.js?v=7", { type: "module" });
+  state.speechWorker.addEventListener("message", handleSpeechWorkerMessage);
+  state.speechWorker.addEventListener("error", event => {
+    handleSpeechFailure(new Error(event.message || "تعذّر تحميل عامل الصوت"));
+  });
+  elements.modelProgress.hidden = false;
+  elements.modelProgress.value = 0;
+  elements.voiceHelp.textContent = "يُنزّل نموذج الصوت المحلي لأول مرة… يمكنك البدء بالإنشاد الآن.";
+  state.speechWorker.postMessage({ type: "load" });
 }
 
-function finishListeningAndSubmit() {
+function combineAudioChunks() {
+  const length = state.audioChunks.reduce((total, chunk) => total + chunk.length, 0);
+  const combined = new Float32Array(length);
+  let offset = 0;
+  for (const chunk of state.audioChunks) {
+    combined.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return combined;
+}
+
+function resampleAudio(input, inputRate, outputRate = SPEECH_SAMPLE_RATE) {
+  if (!input.length || inputRate === outputRate) return input;
+  const ratio = inputRate / outputRate;
+  const output = new Float32Array(Math.max(1, Math.floor(input.length / ratio)));
+  for (let index = 0; index < output.length; index += 1) {
+    const position = index * ratio;
+    const left = Math.floor(position);
+    const right = Math.min(left + 1, input.length - 1);
+    const mix = position - left;
+    output[index] = input[left] * (1 - mix) + input[right] * mix;
+  }
+  return output;
+}
+
+function recordedAudio(maxSeconds = 0) {
+  const resampled = resampleAudio(combineAudioChunks(), state.audioSampleRate);
+  if (!maxSeconds || resampled.length <= maxSeconds * SPEECH_SAMPLE_RATE) return resampled;
+  return resampled.slice(-maxSeconds * SPEECH_SAMPLE_RATE);
+}
+
+function requestTranscription(audio, final, sessionId = state.speechSessionId) {
+  if (!audio?.length || !state.speechWorker || state.speechModelState !== "ready" || state.speechBusy) return false;
+  const requestId = ++state.speechRequestId;
+  state.speechBusy = true;
+  state.activeSpeechRequest = { id: requestId, sessionId, final };
+  state.speechWorker.postMessage(
+    { type: "transcribe", requestId, sessionId, final, audio },
+    [audio.buffer]
+  );
+  return true;
+}
+
+function requestSpeechPreview() {
+  if (!state.listening || state.speechModelState !== "ready" || state.speechBusy) return;
+  const samples = state.audioChunks.reduce((total, chunk) => total + chunk.length, 0);
+  if (samples - state.lastPreviewSamples < state.audioSampleRate * 3) return;
+  state.lastPreviewSamples = samples;
+  requestTranscription(recordedAudio(30), false);
+}
+
+function stopLocalCapture() {
+  clearSpeechPreviewTimer();
+  if (state.audioProcessor) {
+    state.audioProcessor.onaudioprocess = null;
+    state.audioProcessor.disconnect();
+  }
+  state.audioSource?.disconnect();
+  state.audioSink?.disconnect();
+  state.microphoneStream?.getTracks().forEach(track => track.stop());
+  if (state.audioContext && state.audioContext.state !== "closed") {
+    state.audioContext.close().catch(() => {});
+  }
+  state.microphoneStream = null;
+  state.audioContext = null;
+  state.audioSource = null;
+  state.audioProcessor = null;
+  state.audioSink = null;
+}
+
+async function finishListeningAndSubmit() {
   if (!state.listening) return;
-  clearRecognitionTimers();
-  state.submitOnRecognitionEnd = true;
+  const sessionId = state.speechSessionId;
   setListening(false);
-  if (state.recognitionActive) {
-    try {
-      state.recognition.stop();
-    } catch {
-      state.recognitionActive = false;
-      submitRecognitionText();
-    }
-  } else {
-    submitRecognitionText();
+  stopTimer();
+  const audio = recordedAudio();
+  stopLocalCapture();
+  elements.listen.disabled = true;
+  elements.voiceHelp.textContent = state.speechModelState === "ready"
+    ? "جار تحليل التسجيل على جهازك…"
+    : "اكتمل التسجيل؛ سأحلله فور اكتمال تنزيل النموذج المحلي.";
+  if (audio.length < SPEECH_SAMPLE_RATE / 2) {
+    elements.listen.disabled = false;
+    showFeedback("error", "التسجيل قصير جدًا", "افتح الميكروفون وأنشد بيتًا كاملًا قبل إغلاقه.");
+    resumeTimer();
+    return;
   }
+  state.pendingFinalAudio = { audio, sessionId };
+  dispatchQueuedFinal();
 }
 
-function stopRecognition(ignoreEnd = false) {
-  if (!state.recognition) return;
-  clearRecognitionTimers();
-  const wasActive = state.recognitionActive;
+function stopRecognition() {
+  state.speechSessionId += 1;
+  state.pendingFinalAudio = null;
+  stopLocalCapture();
   setListening(false);
-  state.submitOnRecognitionEnd = false;
-  state.ignoreRecognitionEnd = ignoreEnd;
-  resetRecognitionText();
-  if (wasActive) {
-    try {
-      state.recognition.abort();
-    } catch {
-      state.recognitionActive = false;
-      state.ignoreRecognitionEnd = false;
-    }
-  } else {
-    state.ignoreRecognitionEnd = false;
-  }
+  state.audioChunks = [];
+  state.lastPreviewSamples = 0;
 }
 
 function showFeedback(type, title, message) {
@@ -346,7 +486,7 @@ function preparePlayerTurn() {
   state.inTransition = false;
   elements.transcript.textContent = "سيظهر هنا ما يسمعه الراوي…";
   elements.manualInput.value = "";
-  elements.listen.disabled = !Recognition;
+  elements.listen.disabled = !LOCAL_SPEECH_SUPPORTED;
   elements.checkText.disabled = false;
   hideFeedback();
   resetTurnTimer();
@@ -434,7 +574,7 @@ function submitPlayerText(transcripts) {
       "أعد الإنشاد بوضوح أو استخدم الكتابة للتأكد من النص."
     );
   }
-  elements.listen.disabled = !Recognition;
+  elements.listen.disabled = !LOCAL_SPEECH_SUPPORTED;
   resumeTimer();
 }
 
@@ -513,115 +653,74 @@ function goHome() {
   showScreen("start");
 }
 
-function initializeRecognition() {
+function initializeLocalSpeech() {
   const readinessText = elements.voiceReadiness.querySelector("span:last-child");
-  if (!Recognition) {
+  if (!LOCAL_SPEECH_SUPPORTED) {
     elements.voiceReadiness.classList.add("is-limited");
-    readinessText.textContent = "الصوت غير مدعوم هنا؛ استخدم الكتابة أو Chrome.";
+    readinessText.textContent = "التسجيل المحلي غير مدعوم هنا؛ استخدم الكتابة أو Chrome.";
     elements.manualEntry.open = true;
     elements.listen.disabled = true;
-    return;
+  } else {
+    elements.listen.disabled = false;
+    readinessText.textContent = "الديوان جاهز؛ نموذج الصوت يُنزّل عند أول استعمال";
   }
-
-  state.recognition = new Recognition();
-  state.recognition.lang = state.recognitionLanguage;
-  state.recognition.continuous = true;
-  state.recognition.interimResults = true;
-  state.recognition.maxAlternatives = 5;
-
-  state.recognition.onstart = () => {
-    state.recognitionActive = true;
-    if (!state.listening) {
-      state.ignoreRecognitionEnd = true;
-      state.recognition.abort();
-      return;
-    }
-    setListening(true);
-    elements.voiceHelp.textContent = "الميكروفون مفتوح. أنشد على مهل، ثم اضغط «أغلق واعتمد البيت».";
-  };
-
-  state.recognition.onresult = event => {
-    let interim = "";
-    for (let index = event.resultIndex; index < event.results.length; index += 1) {
-      const result = event.results[index];
-      if (result.isFinal) {
-        const prefix = state.finalSegments.join(" ");
-        for (let alternative = 0; alternative < result.length; alternative += 1) {
-          state.alternativeTranscripts.push(
-            `${prefix} ${result[alternative].transcript}`.trim()
-          );
-        }
-        state.finalSegments.push(result[0].transcript.trim());
-      } else {
-        interim += ` ${result[0].transcript}`;
-      }
-    }
-    state.interimTranscript = interim.trim();
-    const visible = `${state.finalSegments.join(" ")} ${state.interimTranscript}`.trim();
-    if (visible) elements.transcript.textContent = visible;
-  };
-
-  state.recognition.onerror = event => {
-    const messages = {
-      "not-allowed": "لم يُسمح باستخدام الميكروفون. فعّل الإذن من إعدادات الموقع.",
-      "audio-capture": "لم يعثر المتصفح على ميكروفون يعمل.",
-      "no-speech": "ما زلت أستمع؛ ابدأ الإنشاد عندما تكون جاهزًا.",
-      "network": "تعذّر الوصول إلى خدمة التعرف الصوتي. تحقق من الاتصال ثم حاول مجددًا.",
-      "language-not-supported": "هذا المتصفح لا يدعم التعرف الصوتي باللغة العربية."
-    };
-    elements.voiceHelp.textContent = messages[event.error] || "حدث خطأ في الاستماع؛ حاول مرة أخرى.";
-    if (event.error === "language-not-supported" && state.recognitionLanguage !== "ar") {
-      state.recognitionLanguage = "ar";
-      state.recognition.lang = "ar";
-      elements.voiceHelp.textContent = "أعيد تشغيل التعرف بإعداد العربية العام…";
-      scheduleRecognitionRestart();
-      return;
-    }
-    if (["not-allowed", "audio-capture", "network", "language-not-supported"].includes(event.error)) {
-      clearRecognitionTimers();
-      setListening(false);
-      showFeedback(
-        "error",
-        "أوقف المتصفح التعرّف الصوتي",
-        `${messages[event.error] || "تعذّر تشغيل الصوت."} — رمز الخطأ: ${event.error}`
-      );
-    }
-  };
-
-  state.recognition.onend = () => {
-    state.recognitionActive = false;
-    if (state.ignoreRecognitionEnd) {
-      state.ignoreRecognitionEnd = false;
-      return;
-    }
-    if (state.submitOnRecognitionEnd) {
-      submitRecognitionText();
-      return;
-    }
-    if (state.listening) {
-      const interim = state.interimTranscript.trim();
-      if (interim.length >= 2 && state.finalSegments.at(-1) !== interim) {
-        state.finalSegments.push(interim);
-      }
-      state.interimTranscript = "";
-      scheduleRecognitionRestart();
-    }
-  };
 }
 
-function openListeningSession() {
+async function openListeningSession() {
   hideFeedback();
-  clearRecognitionTimers();
-  resetRecognitionText();
-  state.submitOnRecognitionEnd = false;
-  elements.transcript.textContent = "الميكروفون مفتوح… ابدأ الإنشاد";
-  elements.voiceHelp.textContent = "ستبقى الكلمات أمامك، ولن يعتمد البيت حتى تغلق الميكروفون بنفسك.";
-  setListening(true);
-  startRecognitionEngine();
+  elements.listen.disabled = true;
+  elements.voiceHelp.textContent = "جار فتح الميكروفون…";
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+    if (!state.duelActive || state.paused || state.inTransition) {
+      stream.getTracks().forEach(track => track.stop());
+      return;
+    }
+
+    state.speechSessionId += 1;
+    state.audioChunks = [];
+    state.lastPreviewSamples = 0;
+    state.microphoneStream = stream;
+    state.audioContext = new AudioContextClass({ sampleRate: SPEECH_SAMPLE_RATE });
+    state.audioSampleRate = state.audioContext.sampleRate;
+    state.audioSource = state.audioContext.createMediaStreamSource(stream);
+    state.audioProcessor = state.audioContext.createScriptProcessor(4096, 1, 1);
+    state.audioSink = state.audioContext.createGain();
+    state.audioSink.gain.value = 0;
+    state.audioProcessor.onaudioprocess = event => {
+      if (!state.listening) return;
+      state.audioChunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+    };
+    state.audioSource.connect(state.audioProcessor);
+    state.audioProcessor.connect(state.audioSink);
+    state.audioSink.connect(state.audioContext.destination);
+    await state.audioContext.resume();
+
+    elements.transcript.textContent = "الميكروفون مفتوح… ابدأ الإنشاد";
+    elements.voiceHelp.textContent = "ستظهر الكلمات على دفعات، ولن يعتمد البيت حتى تغلق الميكروفون بنفسك.";
+    setListening(true);
+    elements.listen.disabled = false;
+    if (state.speechModelState !== "ready") stopTimer();
+    ensureSpeechWorker();
+    state.speechPreviewTimer = window.setInterval(requestSpeechPreview, SPEECH_PREVIEW_INTERVAL);
+  } catch (error) {
+    stopLocalCapture();
+    elements.listen.disabled = false;
+    const explanation = explainSpeechError(error);
+    elements.voiceHelp.textContent = explanation;
+    showFeedback("error", "تعذّر فتح الميكروفون", explanation);
+  }
 }
 
 function toggleListening() {
-  if (!state.recognition || state.paused || state.inTransition) return;
+  if (!LOCAL_SPEECH_SUPPORTED || state.paused || state.inTransition) return;
   if (state.listening) {
     finishListeningAndSubmit();
     return;
@@ -632,7 +731,7 @@ function toggleListening() {
 async function loadVerses() {
   const readinessText = elements.voiceReadiness.querySelector("span:last-child");
   try {
-    const response = await fetch("data/verses.json?v=6");
+    const response = await fetch("data/verses.json?v=7");
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (!Array.isArray(data.verses) || data.verses.length !== 1000) {
@@ -640,12 +739,12 @@ async function loadVerses() {
     }
     state.verses = data.verses;
     elements.start.disabled = false;
-    if (Recognition) {
+    if (LOCAL_SPEECH_SUPPORTED) {
       elements.voiceReadiness.classList.add("is-ready");
-      readinessText.textContent = "الديوان والصوت جاهزان";
+      readinessText.textContent = "الديوان جاهز؛ نموذج الصوت يُنزّل عند أول استعمال";
     } else {
       elements.voiceReadiness.classList.add("is-limited");
-      readinessText.textContent = "الديوان جاهز؛ الصوت غير مدعوم في هذا المتصفح";
+      readinessText.textContent = "الديوان جاهز؛ التسجيل المحلي غير مدعوم في هذا المتصفح";
     }
   } catch (error) {
     console.error(error);
@@ -686,7 +785,7 @@ document.addEventListener("visibilitychange", () => {
 
 setDuration(30);
 saveBestChain(getBestChain());
-initializeRecognition();
+initializeLocalSpeech();
 showScreen("start");
 loadVerses();
 
